@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  n8n:
+    build: .
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASS}
+      - WEBHOOK_URL=${WEBHOOK_URL} 
+      - NODE_FUNCTION_ALLOW_EXTERNAL=uuid,fs,path
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./local_files:/files
+    restart: always
+
+  tunnel:
+    image: node:20-alpine
+    # Устанавливаем localtunnel при запуске и стартуем
+    command: sh -c "npm install -g localtunnel && lt --port 5678 --local-host n8n --subdomain ${TUNNEL_SUBDOMAIN}"
+    restart: always
+    depends_on:
+      - n8n
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: always
+
+volumes:
+  n8n_data:
+  ollama_data:

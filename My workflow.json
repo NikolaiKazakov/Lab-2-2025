@@ -1,0 +1,504 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "75ef8a01-d208-4538-97b9-e5a5851a38c6",
+      "name": "Telegram Trigger",
+      "webhookId": "be9de2d4-5234-4100-a714-9277048a8db3",
+      "credentials": {
+        "telegramApi": {
+          "id": "QjVE8hBikeXhVIj6",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "https",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "8d7c24a9-f813-4a1f-89fb-8ef20fc9d2db"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1be5237a-0b6c-4311-bb62-6710c7f30f91",
+                    "leftValue": "={{ $json.message.video }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "object",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "edaf42de-fd66-46b1-9d18-74d995d4318d",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.video.file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        416,
+        112
+      ],
+      "id": "8d21f9a0-9830-476e-abc2-5e987f20f682",
+      "name": "Get a file",
+      "webhookId": "ce1c9e72-8334-415e-9ef0-c5846f753939",
+      "credentials": {
+        "telegramApi": {
+          "id": "QjVE8hBikeXhVIj6",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "ffmpeg -y -i /files/input.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 /files/audio.wav"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        960,
+        -16
+      ],
+      "id": "0393b7a8-af91-4dd9-9d88-57d72bc55b08",
+      "name": "Извлечение аудио ffmpeg"
+    },
+    {
+      "parameters": {
+        "command": "whisper /files/input.mp4 --model base --output_format srt --output_dir /files"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        -16
+      ],
+      "id": "f20cd59c-d758-474b-bc2f-85571dd19295",
+      "name": "Распознавание речи whisper"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/files/input.srt",
+        "options": {
+          "fileName": "data"
+        }
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        -16
+      ],
+      "id": "c4dd89de-87fa-416c-8fb9-a7100f58c635",
+      "name": "Чтение субтитров для отправки в LLM"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const binaryDataObject = $input.item.binary.data;\n\nconst buffer = Buffer.from(binaryDataObject.data, 'base64');\n\nconst srtText = buffer.toString('utf-8');\n\n\nreturn {\n  json: {\n    srtText: srtText\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        -16
+      ],
+      "id": "c3332210-62d5-4b16-a470-551985659dfc",
+      "name": "Подготовка текста для Ollama"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ollama:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    \"model\": \"llama3.2\", \n    \"stream\": false,\n    \"prompt\": \"Translate the following SRT subtitles to Russian. Preserve the strictly numbering and timestamps format. Only output the translated SRT content, no other text.\\n\\nSRT Content:\\n\" + $json.srtText\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1824,
+        -16
+      ],
+      "id": "480b2d5b-06fa-41d5-af7e-f42348801a90",
+      "name": "Перевод через Ollama"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const translatedText = $input.item.json.response;\n\nif (!translatedText) {\n  throw new Error(\"Пустой ответ от Ollama. Проверьте предыдущий шаг.\");\n}\n\nconst buffer = Buffer.from(translatedText, 'utf-8');\n\nconst binaryData = {\n  data: buffer.toString('base64'), // Данные должны быть в base64\n  mimeType: 'application/x-subrip',\n  fileName: 'out_ru.srt'\n};\n\nreturn {\n  json: { success: true },\n  binary: { data: binaryData } // 'data' — имя свойства, которое вы будете выбирать в следующей ноде\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        -16
+      ],
+      "id": "531ff51e-adc3-415f-b8ca-d9aa17252b49",
+      "name": "Сохранение переведенных субтитров"
+    },
+    {
+      "parameters": {
+        "command": "ffmpeg -y -i /files/input.mp4 -vf \"subtitles=/files/out_ru.srt:force_style='Fontsize=24,BorderStyle=3'\" -c:a copy /files/output_ru.mp4"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        2448,
+        -16
+      ],
+      "id": "51676a62-0034-40c2-85da-0cc89a24837f",
+      "name": "Добавить субтитры в видео ffmpeg"
+    },
+    {
+      "parameters": {
+        "operation": "sendVideo",
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "binaryData": true,
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2864,
+        -16
+      ],
+      "id": "e177984c-db52-44d6-9c3e-e556faf06c44",
+      "name": "Send a video",
+      "webhookId": "29fc0b62-aace-4ab4-b9ac-233dfd4ed1b4",
+      "credentials": {
+        "telegramApi": {
+          "id": "QjVE8hBikeXhVIj6",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "rm /files/input.mp4 /files/input.srt /files/out_ru.srt /files/output_ru.mp4"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        3040,
+        -16
+      ],
+      "id": "dd4b0e6c-7750-4118-95e0-40024cb0fb69",
+      "name": "Очистка файлов"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/files/output_ru.mp4",
+        "options": {
+          "fileName": "data"
+        }
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        2656,
+        -16
+      ],
+      "id": "1f21532c-2882-4de2-b8b3-f7e8e567ec13",
+      "name": "Читаем изменённое видео"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/files/input.mp4",
+        "dataPropertyName": "=data",
+        "options": {
+          "append": false
+        }
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        784,
+        -16
+      ],
+      "id": "43656b75-74ae-414f-9942-78f9540d11f2",
+      "name": "Записывает видео на диск"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/files/out_ru.srt",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        2240,
+        -16
+      ],
+      "id": "abcc6033-3d8b-4ba1-b4fd-e8e7d0fdb005",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.message.text }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        416,
+        -96
+      ],
+      "id": "3bdbd655-8129-402c-b4ca-d32fbd9d3db1",
+      "name": "Загрузить по ссылке"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Загрузить по ссылке",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a file": {
+      "main": [
+        [
+          {
+            "node": "Записывает видео на диск",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Извлечение аудио ffmpeg": {
+      "main": [
+        [
+          {
+            "node": "Распознавание речи whisper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Распознавание речи whisper": {
+      "main": [
+        [
+          {
+            "node": "Чтение субтитров для отправки в LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Чтение субтитров для отправки в LLM": {
+      "main": [
+        [
+          {
+            "node": "Подготовка текста для Ollama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Подготовка текста для Ollama": {
+      "main": [
+        [
+          {
+            "node": "Перевод через Ollama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Перевод через Ollama": {
+      "main": [
+        [
+          {
+            "node": "Сохранение переведенных субтитров",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сохранение переведенных субтитров": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Добавить субтитры в видео ffmpeg": {
+      "main": [
+        [
+          {
+            "node": "Читаем изменённое видео",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a video": {
+      "main": [
+        [
+          {
+            "node": "Очистка файлов",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Читаем изменённое видео": {
+      "main": [
+        [
+          {
+            "node": "Send a video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Записывает видео на диск": {
+      "main": [
+        [
+          {
+            "node": "Извлечение аудио ffmpeg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Добавить субтитры в видео ffmpeg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Загрузить по ссылке": {
+      "main": [
+        [
+          {
+            "node": "Записывает видео на диск",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "545be068-a4bf-40f4-8baa-c793bfc30d92",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5f69e8c5d389e0e9f9bf80fd53a0b0df7ba3d31fac088e43860792eea4450579"
+  },
+  "id": "FTLq5LdoYzK4HAZi",
+  "tags": []
+}
